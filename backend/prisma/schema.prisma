@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum CompanyStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum ProductStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ProductLifecycle {
+  MANUFACTURED
+  SHIPPED
+  IN_STORE
+  SOLD
+}
+
+enum VerificationCodeStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+enum ScanResult {
+  VERIFIED
+  NOT_FOUND
+  SUSPICIOUS
+}
+
+enum ReportStatus {
+  PENDING
+  INVESTIGATING
+  RESOLVED
+  DISMISSED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  MODERATOR
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model Company {
+  id            String        @id @default(uuid())
+  name          String
+  email         String        @unique
+  password      String
+  phone         String?
+  taxId         String?       @unique
+  description   String?
+  logo          String?
+  website       String?
+  address       String?
+  city          String?
+  country       String?
+  documents     String[]      // URLs to uploaded business documents
+  status        CompanyStatus @default(PENDING)
+  rejectionNote String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  products      Product[]
+  notifications Notification[]
+
+  @@map("companies")
+}
+
+model Product {
+  id              String           @id @default(uuid())
+  companyId       String
+  name            String
+  sku             String
+  category        String
+  batchNumber     String
+  manufacturingDate DateTime
+  expiryDate      DateTime?
+  description     String?
+  images          String[]         // URLs to product images
+  status          ProductStatus    @default(PENDING)
+  lifecycle       ProductLifecycle @default(MANUFACTURED)
+  verifiedAt      DateTime?
+  rejectionNote   String?
+  certificates    String[]         // URLs to test reports, certifications
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  verificationCodes VerificationCode[]
+
+  @@unique([companyId, sku, batchNumber])
+  @@map("products")
+}
+
+model VerificationCode {
+  id         String                 @id @default(uuid())
+  productId  String
+  uniqueCode String                 @unique
+  qrCodeUrl  String?
+  status     VerificationCodeStatus @default(ACTIVE)
+  scanCount  Int                    @default(0)
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+
+  product           Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  scanLogs          ScanLog[]
+  counterfeitReports CounterfeitReport[]
+
+  @@map("verification_codes")
+}
+
+model ScanLog {
+  id                 String     @id @default(uuid())
+  verificationCodeId String
+  scannedAt          DateTime   @default(now())
+  ipAddress          String?
+  latitude           Float?
+  longitude          Float?
+  city               String?
+  country            String?
+  userAgent          String?
+  result             ScanResult
+
+  verificationCode VerificationCode @relation(fields: [verificationCodeId], references: [id], onDelete: Cascade)
+
+  @@map("scan_logs")
+}
+
+model CounterfeitReport {
+  id                 String       @id @default(uuid())
+  verificationCodeId String?
+  reporterEmail      String
+  reporterName       String?
+  description        String
+  evidence           String[]     // URLs to uploaded evidence
+  status             ReportStatus @default(PENDING)
+  adminNotes         String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  verificationCode VerificationCode? @relation(fields: [verificationCodeId], references: [id])
+
+  @@map("counterfeit_reports")
+}
+
+model Admin {
+  id        String    @id @default(uuid())
+  name      String
+  email     String    @unique
+  password  String
+  role      AdminRole @default(MODERATOR)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("admins")
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("customers")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  companyId String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  type      String   // e.g., "company_approved", "product_verified", "suspicious_scan"
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
